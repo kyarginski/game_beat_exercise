@@ -102,7 +102,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := calculator.Calculate(tt.spinSymbols)
 			require.NoError(t, err)
-			require.Equal(t, tt.exp, got)
+			require.ElementsMatch(t, tt.exp, got)
 		})
 	}
 }

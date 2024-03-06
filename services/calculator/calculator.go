@@ -1,7 +1,7 @@
 package calculator
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/releaseband/golang-developer-test/internal/configs/lines"
 	"github.com/releaseband/golang-developer-test/internal/configs/paytable"
@@ -23,51 +23,52 @@ func NewCalculator(lines lines.Lines, payTable *paytable.PayTable) *Calculator {
 }
 
 func (c *Calculator) Calculate(spinSymbols symbols.Reels) ([]win.Win, error) {
+	if len(spinSymbols) == 0 {
+		return nil, errors.New("no reels")
+	}
 	var wins []win.Win
 
-	for _, line := range c.lines {
-		var matchingSymbols symbols.Symbols
-		symbolCount := 0
-		var winSymbol symbols.Symbol
+	reelsCount := len(spinSymbols)
+	symbolsPerReel := len(spinSymbols[0])
 
-		for i, index := range line.GetIndices() {
-			reelIndex := index % len(spinSymbols)   // Получаем индекс барабана
-			symbolIndex := index / len(spinSymbols) // Получаем индекс символа в барабане
+	symbolCounts := make(map[symbols.Symbol]int, len(spinSymbols))
 
-			// Проверяем на выход за границы
-			if reelIndex >= len(spinSymbols) || symbolIndex >= len(spinSymbols[reelIndex]) {
-				return nil, fmt.Errorf("index out of range")
-			}
-
+	for symbolIndex := 0; symbolIndex < symbolsPerReel; symbolIndex++ {
+		var prevSymbol symbols.Symbol
+		for reelIndex := 0; reelIndex < reelsCount; reelIndex++ {
 			currentSymbol := spinSymbols[reelIndex][symbolIndex]
-
-			if i == 0 { // Для первого символа в линии
-				winSymbol = currentSymbol                            // Устанавливаем выигрышный символ
-				if winSymbol == WILD && len(line.GetIndices()) > 1 { // Если первый символ WILD, ищем реальный символ далее
-					continue // Пропускаем дальнейшую логику в этой итерации, чтобы найти следующий непустой символ
+			if currentSymbol == prevSymbol || currentSymbol == WILD {
+				symbolCounts[currentSymbol]++
+			} else {
+				if prevSymbol != 0 {
+					continue
 				}
 			}
-
-			if currentSymbol != winSymbol && currentSymbol != WILD {
-				break // Если текущий символ не совпадает с выигрышным и не является WILD, прерываем
-			}
-
-			if winSymbol == WILD && currentSymbol != WILD { // Если выигрышный символ был WILD, но мы нашли реальный
-				winSymbol = currentSymbol // Обновляем выигрышный символ
-			}
-
-			symbolCount++                                            // Увеличиваем количество подходящих символов
-			matchingSymbols = append(matchingSymbols, currentSymbol) // Добавляем текущий символ к подходящим
+			prevSymbol = currentSymbol
+			// fmt.Printf("Symbol at Reel %d, Position %d: %d\n", reelIndex+1, symbolIndex+1, currentSymbol)
 		}
-
-		if symbolCount > 0 {
-			// Если количество подходящих символов достаточно для выигрыша
-			payout, err := c.payTable.Get(winSymbol, symbolCount)
-			if err == nil {
-				wins = append(wins, win.NewWin(payout, matchingSymbols, winSymbol))
-			}
-		}
+		// fmt.Println("--- Line End ---")
 	}
 
+	maxCount := 2 // ограничиваем количество символов для выигрыша
+	winSymbols := make([]symbols.Symbol, 0)
+	for i, counts := range symbolCounts {
+		if counts >= maxCount {
+			winSymbols = append(winSymbols, i)
+		}
+		// fmt.Printf("Symbol %d counts: %+v\n", i, counts+1)
+	}
+
+	for _, winSymbol := range winSymbols {
+		matchingSymbolsCount := symbolCounts[winSymbol]
+		payout, err := c.payTable.Get(winSymbol, matchingSymbolsCount)
+		symbolsFound := make(symbols.Symbols, 0)
+		for i := 0; i <= matchingSymbolsCount; i++ {
+			symbolsFound = append(symbolsFound, winSymbol)
+		}
+		if err == nil && payout > 0 {
+			wins = append(wins, win.NewWin(payout, symbolsFound, winSymbol))
+		}
+	}
 	return wins, nil
 }
